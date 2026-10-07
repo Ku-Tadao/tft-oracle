@@ -9,6 +9,7 @@ import {
   parseTraits,
   parseItems,
   getSetAugmentNames,
+  hashName,
   resolveDescription,
   stripMarkup,
   isAugment,
@@ -427,6 +428,24 @@ describe('Trait parsing', () => {
   });
 });
 
+describe('Trait breakpoint rows', () => {
+  it('resolves each <row> with its own breakpoint values', () => {
+    const [trait] = parseTraits({
+      name: 'x',
+      champions: [],
+      traits: [{
+        apiName: 'TFT18_Solar', name: 'Solar', icon: '',
+        desc: 'Intro.<br><row>(@MinUnits@) +@Shield*100@%</row><row>(@MinUnits@) +@Shield*100@%</row>',
+        effects: [
+          { minUnits: 3, maxUnits: 4, style: 1, variables: { Shield: 0.05 } },
+          { minUnits: 5, maxUnits: 25000, style: 3, variables: { [hashName('Shield')]: 0.1 } },
+        ],
+      }],
+    });
+    expect(trait.description).toBe('Intro.\n(3) +5%\n(5) +10%');
+  });
+});
+
 describe('Item parsing', () => {
   it('identifies components by tag', () => {
     const items = createMockItems();
@@ -547,9 +566,9 @@ describe('Description variable resolution', () => {
     expect(resolveDescription('@Percent*100@% chance', vars)).toBe('25% chance');
   });
 
-  it('strips %i:scaleXX% formatting tags', () => {
-    const result = resolveDescription('Deals %i:scaleAD%50%i:scaleAD% damage', []);
-    expect(result).toBe('Deals 50 damage');
+  it('turns stat icons into readable tags and drops other icons', () => {
+    const result = resolveDescription('15% %i:scaleAS% and 12 %i:scaleArmor%%i:scaleMR% %i:star%', []);
+    expect(result).toBe('15% [AS] and 12 [Armor][MR]');
   });
 
   it('strips HTML tags and converts <br> to newline', () => {
@@ -561,9 +580,21 @@ describe('Description variable resolution', () => {
     expect(resolveDescription('', [])).toBe('');
   });
 
-  it('keeps unresolved variables if not in lookup', () => {
+  it('marks unresolved variables as [?]', () => {
     const result = resolveDescription('@Unknown@ value', []);
-    expect(result).toBe('@Unknown@ value');
+    expect(result).toBe('[?] value');
+  });
+
+  it('resolves variables stored under a hashed name', () => {
+    // CommunityDragon real data: {ad998bcf} is AttackSpeedMultiplier
+    const vars: RawVariable[] = [{ name: '{ad998bcf}', value: 0.25 }];
+    expect(resolveDescription('gain @AttackSpeedMultiplier*100@% AS', vars)).toBe('gain 25% AS');
+    expect(hashName('WinStreakCount')).toBe('{dccca3be}');
+  });
+
+  it('handles a % inside the placeholder and in-game counters', () => {
+    const vars: RawVariable[] = [{ name: 'AS', value: 0.2 }];
+    expect(resolveDescription('@AS*100%@ AS, Rolls: @TFTUnitProperty.:TFT_Rolls@', vars)).toBe('20% AS, Rolls: [?]');
   });
 
   it('is case-insensitive for variable lookup', () => {

@@ -61,14 +61,32 @@ export function stripMarkup(desc: string): string {
 }
 
 /**
+ * FNV-1a hash of the lowercased name, in CommunityDragon's "{xxxxxxxx}" form.
+ * CommunityDragon emits this for value names it can't unhash.
+ */
+export function hashName(name: string): string {
+  let h = 0x811c9dc5;
+  for (const ch of name.toLowerCase()) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `{${h.toString(16).padStart(8, '0')}}`;
+}
+
+/** Marker for a value the data source doesn't provide. */
+export const MISSING_VALUE = '[?]';
+
+/**
  * Resolve @Variable@ template placeholders in a description.
  *
  * Variables can have:
  * - Simple values: @Damage@ → "100"
  * - Star-level scaling arrays: @Damage@ → "100/150/200" (1-star/2-star/3-star)
  * - Math expressions: @Damage*100@ → multiply value by 100
+ * - Hashed names: @Damage@ also matches a "{fnv1a}" key
+ * - Anything unresolvable becomes [?] so consumers don't invent a number
  *
- * Also handles %i:scaleAD% style formatting tags by stripping them.
+ * Stat icons (%i:scaleAD%) become readable tags ([AD]); other %i:…% icons are dropped.
  */
 export function resolveDescription(
   desc: string,
@@ -85,9 +103,9 @@ export function resolveDescription(
   }
 
   // Replace @VarName@ and @VarName*multiplier@ patterns
-  let resolved = desc.replace(/@(\w+)(?:\*(\d+(?:\.\d+)?))?@/g, (_match, name: string, multiplier?: string) => {
-    const value = varMap.get(name.toLowerCase());
-    if (value === undefined) return _match; // keep original if not found
+  let resolved = desc.replace(/@(\w+)(?:\*(\d+(?:\.\d+)?))?(%)?@/g, (_match, name: string, multiplier?: string, pct?: string) => {
+    const value = varMap.get(name.toLowerCase()) ?? varMap.get(hashName(name));
+    if (value === undefined) return MISSING_VALUE;
 
     const mult = multiplier ? parseFloat(multiplier) : 1;
 
@@ -97,14 +115,17 @@ export function resolveDescription(
       const levels = value.length > 3 && value[0] === 0 ? value.slice(1) : value;
       return levels
         .map(v => formatNumber(v * mult))
-        .join('/');
+        .join('/') + (pct ?? '');
     }
 
-    return formatNumber(value * mult);
+    return formatNumber(value * mult) + (pct ?? '');
   });
 
-  // Strip %i:scaleXX% formatting tags
-  resolved = resolved.replace(/%i:\w+%/g, '');
+  // In-game counters (@TFTUnitProperty.…@, @TFTTrait.…@) have no static value
+  resolved = resolved.replace(/@[^@\s]+@/g, MISSING_VALUE);
+
+  // Stat icons tell which stat a number is; keep them as [AD], [Armor], ...
+  resolved = resolved.replace(/%i:scale(\w+)%/g, '[$1]').replace(/%i:\w+%/g, '');
 
   // Strip HTML/TFT markup
   resolved = stripMarkup(resolved);
@@ -167,17 +188,27 @@ export function parseTraits(setData: RawSetData): Trait[] {
   return setData.traits.map(parseTrait);
 }
 
+function effectVars(e: RawTrait['effects'][number] | undefined): RawVariable[] {
+  if (!e) return [];
+  return [
+    { name: 'MinUnits', value: e.minUnits },
+    { name: 'MaxUnits', value: e.maxUnits },
+    ...Object.entries(e.variables).map(([name, value]) => ({ name, value })),
+  ];
+}
+
 function parseTrait(raw: RawTrait): Trait {
-  // Resolve description using the first breakpoint's variables if available
-  const firstEffect = raw.effects[0];
-  const mockVariables: RawVariable[] = firstEffect
-    ? Object.entries(firstEffect.variables).map(([name, value]) => ({ name, value }))
-    : [];
+  // Each <row> describes one breakpoint; resolve it with that breakpoint's values.
+  // Text outside rows uses the first breakpoint.
+  let row = 0;
+  const desc = raw.desc.replace(/<row>([\s\S]*?)<\/row>/g, (_m, body: string) =>
+    resolveDescription(body, effectVars(raw.effects[row++])) + '<br>'
+  );
 
   return {
     name: raw.name,
     apiName: raw.apiName,
-    description: resolveDescription(raw.desc, mockVariables),
+    description: resolveDescription(desc, effectVars(raw.effects[0])),
     breakpoints: raw.effects.map(e => ({
       minUnits: e.minUnits,
       maxUnits: e.maxUnits,
@@ -256,11 +287,20 @@ export function parseItems(
   return { items: parsedItems, augments: parsedAugments };
 }
 
+function effectVariables(raw: RawItem): RawVariable[] {
+  return raw.effects
+    ? Object.entries(raw.effects).map(([name, value]) => ({
+        name,
+        value: value as number | number[] | null,
+      }))
+    : [];
+}
+
 function parseItem(raw: RawItem): Item {
   return {
     name: raw.name,
     apiName: raw.apiName,
-    description: stripMarkup(raw.desc),
+    description: resolveDescription(raw.desc, effectVariables(raw)),
     effects: JSON.stringify(raw.effects),
     composition: JSON.stringify(raw.composition),
     tags: raw.tags.join(','),
@@ -270,17 +310,10 @@ function parseItem(raw: RawItem): Item {
 }
 
 function parseAugment(raw: RawItem): Augment {
-  // Resolve @Variable@ templates using effects data
-  const effectVars: RawVariable[] = raw.effects
-    ? Object.entries(raw.effects).map(([name, value]) => ({
-        name,
-        value: value as number | number[] | null,
-      }))
-    : [];
   return {
     name: raw.name,
     apiName: raw.apiName,
-    description: resolveDescription(raw.desc, effectVars),
+    description: resolveDescription(raw.desc, effectVariables(raw)),
     effects: JSON.stringify(raw.effects),
   };
 }
