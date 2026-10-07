@@ -2,8 +2,16 @@
 
 export interface TftRawData {
   items: RawItem[];
-  setData: Record<string, RawSetData>;
+  setData: RawSetMeta[];
   sets: Record<string, RawSetData>;
+}
+
+/** Per-set metadata. `augments` lists every augment apiName live in that set, whatever its prefix. */
+export interface RawSetMeta {
+  number: number;
+  mutator: string;
+  name: string;
+  augments?: string[];
 }
 
 export interface RawSetData {

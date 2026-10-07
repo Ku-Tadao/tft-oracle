@@ -8,6 +8,7 @@ import {
   parseChampions,
   parseTraits,
   parseItems,
+  getSetAugmentNames,
   resolveDescription,
   stripMarkup,
   isAugment,
@@ -492,6 +493,40 @@ describe('Augment extraction', () => {
     expect(aug.name).toBe('Warrior Crown');
     expect(aug.apiName).toBe('TFT16_Augment_WarriorCrown');
     expect(aug.description).toContain('Warrior');
+  });
+});
+
+describe('Set augment list', () => {
+  const raw = (apiName: string, name: string) =>
+    ({ ...createMockItems()[4], apiName, name });
+
+  it('uses the setData augment list over apiName prefixes', () => {
+    const items = [
+      ...createMockItems(),
+      raw('DA_ChallengersGrace', "Challenger's Grace"),
+      raw('TFT_Augment_CalledShot', 'Called Shot'),
+      raw('TFT9_Augment_NotLive', 'Not Live'),
+    ];
+    const live = ['DA_ChallengersGrace', 'TFT_Augment_CalledShot'];
+    const { items: parsed, augments } = parseItems(items, '18', live);
+
+    expect(augments.map(a => a.apiName).sort()).toEqual(live.sort());
+    expect(parsed.map(i => i.apiName)).not.toContain('DA_ChallengersGrace');
+    expect(parsed.length).toBe(4); // regular items unaffected
+  });
+
+  it('reads augment names for the current set from setData', () => {
+    const data = {
+      items: [],
+      sets: {},
+      setData: [
+        { number: 17, mutator: 'TFTSet17', name: 'x', augments: ['A17'] },
+        { number: 18, mutator: 'TFTSet18_Stage2', name: 'x', augments: [] },
+        { number: 18, mutator: 'TFTSet18', name: 'x', augments: ['DA_X'] },
+      ],
+    };
+    expect(getSetAugmentNames(data, '18')).toEqual(['DA_X']);
+    expect(getSetAugmentNames({ ...data, setData: {} as never }, '18')).toBeUndefined();
   });
 });
 

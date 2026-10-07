@@ -4,6 +4,7 @@ import { fetchTftData } from './fetch.js';
 import {
   detectCurrentSet,
   getSetData,
+  getSetAugmentNames,
   parseChampions,
   parseTraits,
   parseItems,
@@ -216,7 +217,7 @@ export async function runPipeline(
     // Parse
     const champions = parseChampions(setData);
     const traits = parseTraits(setData);
-    const { items, augments } = parseItems(rawData.items, setNumber);
+    const { items, augments } = parseItems(rawData.items, setNumber, getSetAugmentNames(rawData, setNumber));
 
     // Clear and re-ingest
     clearAllData(db);

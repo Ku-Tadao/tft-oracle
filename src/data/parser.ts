@@ -36,6 +36,16 @@ export function getSetData(data: TftRawData, setNumber: string): RawSetData {
   return setData;
 }
 
+/**
+ * Get the augment apiNames CommunityDragon lists for a set.
+ * Newer sets use non-prefixed ids (DA_*, TFT_Augment_*), so the prefix filter alone finds none.
+ */
+export function getSetAugmentNames(data: TftRawData, setNumber: string): string[] | undefined {
+  if (!Array.isArray(data.setData)) return undefined;
+  const meta = data.setData.find(s => String(s.number) === setNumber && s.augments?.length);
+  return meta?.augments;
+}
+
 // --- Description resolution ---
 
 /**
@@ -208,16 +218,25 @@ export function isComponent(item: RawItem): boolean {
  *
  * @param items - Raw items array from CommunityDragon
  * @param currentSetNumber - The current set number (e.g., "16")
+ * @param setAugmentNames - Augment apiNames live in the set (from setData); overrides prefix-based augment detection
  */
 export function parseItems(
   items: RawItem[],
-  currentSetNumber: string
+  currentSetNumber: string,
+  setAugmentNames?: string[]
 ): { items: Item[]; augments: Augment[] } {
   const setPrefix = getCurrentSetPrefix(currentSetNumber);
+  const setAugments = setAugmentNames && new Set(setAugmentNames);
   const parsedItems: Item[] = [];
   const parsedAugments: Augment[] = [];
 
   for (const raw of items) {
+    // When the set lists its augments, that list is the source of truth for augments
+    if (setAugments && (setAugments.has(raw.apiName) || isAugment(raw))) {
+      if (setAugments.has(raw.apiName) && raw.name) parsedAugments.push(parseAugment(raw));
+      continue;
+    }
+
     // Skip items from other sets (keep base TFT_Item_ items and current set items)
     const isBaseItem = raw.apiName.startsWith('TFT_Item_');
     const isCurrentSet = raw.apiName.startsWith(setPrefix);
