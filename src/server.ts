@@ -214,7 +214,8 @@ async function main(): Promise<void> {
   // Run data pipeline
   try {
     console.error('[tft-oracle] Starting data pipeline...');
-    await runPipeline(db);
+    // Always re-ingest: the download is cached for 6h, but the DB must pick up new patches and parser fixes.
+    await runPipeline(db, { force: true });
     console.error('[tft-oracle] Pipeline complete');
   } catch (err) {
     console.error(
