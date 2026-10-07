@@ -40,32 +40,28 @@ Stop LLMs from hallucinating TFT data. tft-oracle gives AI assistants accurate, 
 
 ## Install
 
-### Claude Desktop
-
-Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "tft-oracle": {
-      "command": "npx",
-      "args": ["-y", "tft-oracle"]
-    }
-  }
-}
-```
-
-### CLI
+This fork isn't published to npm (`npx tft-oracle` installs the upstream package). Build it locally:
 
 ```bash
-npx tft-oracle
+git clone https://github.com/Ku-Tadao/tft-oracle.git
+cd tft-oracle
+npm ci && npm run build
+claude mcp add tft-oracle -s user -- node "$PWD/dist/server.js"
 ```
+
+For Claude Desktop, point `command`/`args` at `node` and the same `dist/server.js` path.
 
 ## Data Source
 
-Game data is sourced from [CommunityDragon](https://communitydragon.org), which extracts structured data from Riot Games' TFT client files. Data is fetched on first run and cached locally at `~/.tft-oracle/`. It auto-updates when CommunityDragon publishes new patch data.
+Game data is sourced from [CommunityDragon](https://communitydragon.org), which extracts structured data from Riot Games' TFT client files. Data is cached at `~/.tft-oracle/` (download refreshed every 6 hours) and re-ingested on every server start, so new patches show up without manual steps. The current set is detected automatically: the highest-numbered set in CommunityDragon's `latest` (live) data.
 
 No Riot Games API key is required.
+
+### Missing values
+
+Any value the data doesn't contain is shown as `[?]`, never guessed. In-game counters (e.g. "Rolls: [?]") have no static value by nature.
+
+**Set 18 champion abilities:** with Set 18, TFT moved to Unreal Engine and CommunityDragon no longer extracts ability values (2 of 74 champions have them; Sets 16–17 had nearly all). Champion stats, traits, items and augments are unaffected. Ability numbers come back automatically if CommunityDragon restores them.
 
 ## Legal
 

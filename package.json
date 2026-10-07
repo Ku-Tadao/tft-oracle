@@ -40,11 +40,11 @@
   "mcpName": "io.github.gregario/tft-oracle",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gregario/tft-oracle.git"
+    "url": "git+https://github.com/Ku-Tadao/tft-oracle.git"
   },
-  "homepage": "https://github.com/gregario/tft-oracle#readme",
+  "homepage": "https://github.com/Ku-Tadao/tft-oracle#readme",
   "bugs": {
-    "url": "https://github.com/gregario/tft-oracle/issues"
+    "url": "https://github.com/Ku-Tadao/tft-oracle/issues"
   },
   "keywords": [
     "mcp",
