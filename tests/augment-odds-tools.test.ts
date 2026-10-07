@@ -49,6 +49,14 @@ describe('searchAugments', () => {
     expect(result.augments).toHaveLength(0);
     expect(result.total).toBe(0);
   });
+
+  it('filters by tier, alone and with a query', () => {
+    db.prepare("UPDATE augments SET tier = 3 WHERE name = 'First Aid Kit'").run();
+    expect(searchAugments(db, { tier: 'prismatic' }).augments).toEqual([
+      { name: 'First Aid Kit', description: expect.any(String), tier: 'prismatic' },
+    ]);
+    expect(searchAugments(db, { query: 'heal', tier: 'silver' }).augments).toHaveLength(0);
+  });
 });
 
 // --- Rolling Odds Tests ---

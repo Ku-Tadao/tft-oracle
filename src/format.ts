@@ -5,6 +5,7 @@ import type { GetTraitResult } from './tools/get-trait.js';
 import type { SearchItemsResult } from './tools/search-items.js';
 import type { GetItemRecipeResult, GetItemRecipeError } from './tools/get-item-recipe.js';
 import type { SearchAugmentsResult } from './tools/search-augments.js';
+import type { SearchWispsResult } from './tools/search-wisps.js';
 import type { GetRollingOddsResult, GetRollingOddsError } from './tools/get-rolling-odds.js';
 
 const ATTRIBUTION =
@@ -123,8 +124,19 @@ export function formatSearchAugments(result: SearchAugmentsResult): string {
   if (result.augments.length === 0) {
     return 'No augments found matching your query.' + ATTRIBUTION;
   }
-  const lines = result.augments.map((a) => `• ${a.name} — ${a.description}`);
+  const lines = result.augments.map((a) => `• ${a.name}${a.tier ? ` (${a.tier})` : ''} — ${a.description}`);
   return `Found ${result.total} augment(s):\n\n${lines.join('\n')}` + ATTRIBUTION;
+}
+
+export function formatSearchWisps(result: SearchWispsResult): string {
+  if (result.wisps.length === 0) {
+    return 'No wisps found. Wisp data needs an overlay source (see README).' + ATTRIBUTION;
+  }
+  const lines = result.wisps.map((w) =>
+    `• ${w.name} (${w.cost}g${w.category ? `, ${w.category}` : ''}) — ${w.description}` +
+    (w.upgraded ? `\n  Upgraded: ${w.upgraded}` : ''),
+  );
+  return `Found ${result.total} wisp(s):\n\n${lines.join('\n')}` + ATTRIBUTION;
 }
 
 export function formatGetRollingOdds(result: GetRollingOddsResult | GetRollingOddsError): string {

@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 
 const DEFAULT_DATA_DIR = path.join(os.homedir(), '.tft-oracle');
 const DB_FILENAME = 'tft.sqlite';
+// Bump when schema.sql changes; the DB is a rebuildable cache, so a mismatch just recreates it.
+const SCHEMA_VERSION = 2;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
@@ -51,8 +53,17 @@ export function getDatabase(dataDir?: string): Database.Database {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 
+  // Drop tables in place (not the file: another server process may hold it open on Windows)
+  if (db.pragma('user_version', { simple: true }) !== SCHEMA_VERSION) {
+    const tables = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+    ).all() as Array<{ name: string }>;
+    for (const { name } of tables) db.exec(`DROP TABLE IF EXISTS "${name}"`);
+  }
+
   // Initialize schema (idempotent via IF NOT EXISTS)
   initializeSchema(db);
+  db.pragma(`user_version = ${SCHEMA_VERSION}`);
 
   return db;
 }

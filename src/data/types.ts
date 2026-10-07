@@ -142,4 +142,14 @@ export interface Augment {
   apiName: string;
   description: string;
   effects: string; // JSON
+  tier?: number | null;
+}
+
+export interface Wisp {
+  name: string;
+  apiName: string;
+  cost: number;
+  category: string | null;
+  description: string;
+  upgraded: string | null;
 }

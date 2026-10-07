@@ -21,7 +21,7 @@ Stop LLMs from hallucinating TFT data. tft-oracle gives AI assistants accurate, 
 - **Champions** — Full stats, traits, abilities, and costs for all champions in the current set
 - **Traits** — Breakpoint thresholds, scaling values, and champion membership
 - **Items** — Complete recipe tree, stat effects, and component relationships
-- **Augments** — Descriptions and effects
+- **Augments** — Descriptions and effects, plus tiers with an overlay source
 - **Rolling Odds** — Shop probability tables by player level
 - **Auto-updates** — Data refreshes from CommunityDragon on each server start
 
@@ -35,7 +35,8 @@ Stop LLMs from hallucinating TFT data. tft-oracle gives AI assistants accurate, 
 | `get_trait` | Trait detail with breakpoints and champion list |
 | `search_items` | Search items by name or component |
 | `get_item_recipe` | Item recipe tree and reverse lookups |
-| `search_augments` | Search augments by name or effect |
+| `search_augments` | Search augments by name, effect, or tier |
+| `search_wisps` | Search Set 18 wisps by name, cost, or category (needs overlay) |
 | `get_rolling_odds` | Champion shop odds by player level |
 
 ## Install
@@ -61,7 +62,25 @@ No Riot Games API key is required.
 
 Any value the data doesn't contain is shown as `[?]`, never guessed. In-game counters (e.g. "Rolls: [?]") have no static value by nature.
 
-**Set 18 champion abilities:** with Set 18, TFT moved to Unreal Engine and CommunityDragon no longer extracts ability values (2 of 74 champions have them; Sets 16–17 had nearly all). Champion stats, traits, items and augments are unaffected. Ability numbers come back automatically if CommunityDragon restores them.
+**Set 18 champion abilities:** with Set 18, TFT moved to Unreal Engine and CommunityDragon no longer extracts ability values (2 of 74 champions have them; Sets 16–17 had nearly all). Champion stats, traits, items and augments are unaffected. Ability numbers come back automatically if CommunityDragon restores them, or right away with an overlay source.
+
+### Optional overlay source
+
+Set `TFT_ORACLE_OVERLAY_URL` to a base URL with a `{set}` placeholder to layer extra data over CommunityDragon:
+
+```bash
+claude mcp add tft-oracle -s user -e TFT_ORACLE_OVERLAY_URL='https://example.com/tft/set{set}/en_us' -- node "$PWD/dist/server.js"
+```
+
+The server fetches three JSON files from that base on every start. Each one is optional, and any file that is missing or fails to load leaves CommunityDragon's data in place.
+
+| File | Shape | Effect |
+|------|-------|--------|
+| `units` | `{ [apiName]: { apiKey, ability: { name, description } } }` | Replaces ability text (values already filled in) |
+| `augments` | `{ tier1\|tier2\|tier3: { [key]: { key, name, description } } }` | Replaces the augment list and adds Silver/Gold/Prismatic tiers |
+| `wisps` | `{ [apiName]: { apiKey, name, cost, description, tags, upgrades: [{ description }] } }` | Fills `search_wisps` |
+
+Without the env var, `search_wisps` returns nothing and augments have no tier.
 
 ## Legal
 

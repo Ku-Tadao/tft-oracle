@@ -12,6 +12,7 @@ import { GetTraitInput, getTrait } from './tools/get-trait.js';
 import { SearchItemsInput, searchItems } from './tools/search-items.js';
 import { GetItemRecipeInput, getItemRecipe } from './tools/get-item-recipe.js';
 import { SearchAugmentsInput, searchAugments } from './tools/search-augments.js';
+import { SearchWispsInput, searchWisps } from './tools/search-wisps.js';
 import { GetRollingOddsInput, getRollingOdds } from './tools/get-rolling-odds.js';
 
 import {
@@ -22,6 +23,7 @@ import {
   formatSearchItems,
   formatGetItemRecipe,
   formatSearchAugments,
+  formatSearchWisps,
   formatGetRollingOdds,
 } from './format.js';
 
@@ -167,7 +169,7 @@ export function createServer(db: Database.Database) {
   // 7. search_augments
   server.tool(
     'search_augments',
-    'Search TFT augments by name or description. Omit the query to list all augments in the current set.',
+    'Search TFT augments by name, description, or tier (silver/gold/prismatic). Omit the query to list all augments in the current set.',
     SearchAugmentsInput.shape,
     async (params) => {
       try {
@@ -184,7 +186,27 @@ export function createServer(db: Database.Database) {
     },
   );
 
-  // 8. get_rolling_odds
+  // 8. search_wisps
+  server.tool(
+    'search_wisps',
+    'Search Set 18 wisps (the set mechanic) by name, description, cost, or category. Includes the upgraded effect.',
+    SearchWispsInput.shape,
+    async (params) => {
+      try {
+        const result = searchWisps(db, params);
+        return {
+          content: [{ type: 'text' as const, text: formatSearchWisps(result) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text' as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // 9. get_rolling_odds
   server.tool(
     'get_rolling_odds',
     'Get TFT champion shop rolling odds by player level. Shows the probability of seeing each cost tier (1-5) at a given level. Omit the level to see the full table.',
@@ -228,7 +250,7 @@ async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   console.error(`[tft-oracle] v${version} starting on stdio...`);
   await server.connect(transport);
-  console.error('[tft-oracle] Server running — 8 tools registered');
+  console.error('[tft-oracle] Server running — 9 tools registered');
 
   process.on('SIGINT', async () => {
     await server.close();

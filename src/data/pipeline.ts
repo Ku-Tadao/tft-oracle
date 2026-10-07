@@ -9,7 +9,8 @@ import {
   parseTraits,
   parseItems,
 } from './parser.js';
-import type { Champion, Trait, Item, Augment } from './types.js';
+import { fetchOverlay, applyOverlay } from './overlay.js';
+import type { Champion, Trait, Item, Augment, Wisp } from './types.js';
 
 // --- Constants ---
 
@@ -21,6 +22,8 @@ export interface PipelineOptions {
   force?: boolean;
   cacheDir?: string;
   fetchFn?: typeof fetch;
+  /** Overlay base URL; defaults to TFT_ORACLE_OVERLAY_URL. */
+  overlayUrl?: string;
 }
 
 export interface PipelineResult {
@@ -28,6 +31,7 @@ export interface PipelineResult {
   traits: number;
   items: number;
   augments: number;
+  wisps: number;
   setNumber: string;
   setName: string;
 }
@@ -132,8 +136,8 @@ function insertItems(db: Database.Database, items: Item[]): void {
 
 function insertAugments(db: Database.Database, augments: Augment[]): void {
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO augments (name, apiName, description, effects)
-    VALUES (@name, @apiName, @description, @effects)
+    INSERT OR REPLACE INTO augments (name, apiName, description, effects, tier)
+    VALUES (@name, @apiName, @description, @effects, @tier)
   `);
 
   for (let i = 0; i < augments.length; i += BATCH_SIZE) {
@@ -145,11 +149,20 @@ function insertAugments(db: Database.Database, augments: Augment[]): void {
           apiName: aug.apiName,
           description: aug.description,
           effects: aug.effects,
+          tier: aug.tier ?? null,
         });
       }
     });
     transaction(batch);
   }
+}
+
+function insertWisps(db: Database.Database, wisps: Wisp[]): void {
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO wisps (name, apiName, cost, category, description, upgraded)
+    VALUES (@name, @apiName, @cost, @category, @description, @upgraded)
+  `);
+  db.transaction((rows: Wisp[]) => rows.forEach(w => stmt.run(w)))(wisps);
 }
 
 /**
@@ -162,6 +175,7 @@ function clearAllData(db: Database.Database): void {
   db.exec('DELETE FROM traits');
   db.exec('DELETE FROM items');
   db.exec('DELETE FROM augments');
+  db.exec('DELETE FROM wisps');
   db.exec('DELETE FROM metadata');
 }
 
@@ -200,6 +214,7 @@ export async function runPipeline(
       traits: (db.prepare('SELECT COUNT(*) as cnt FROM traits').get() as { cnt: number }).cnt,
       items: (db.prepare('SELECT COUNT(*) as cnt FROM items').get() as { cnt: number }).cnt,
       augments: (db.prepare('SELECT COUNT(*) as cnt FROM augments').get() as { cnt: number }).cnt,
+      wisps: (db.prepare('SELECT COUNT(*) as cnt FROM wisps').get() as { cnt: number }).cnt,
       setNumber: setNumber?.value ?? 'unknown',
       setName: setName?.value ?? 'unknown',
     };
@@ -217,7 +232,13 @@ export async function runPipeline(
     // Parse
     const champions = parseChampions(setData);
     const traits = parseTraits(setData);
-    const { items, augments } = parseItems(rawData.items, setNumber, getSetAugmentNames(rawData, setNumber));
+    const parsed = parseItems(rawData.items, setNumber, getSetAugmentNames(rawData, setNumber));
+    const items = parsed.items;
+    let augments = parsed.augments;
+    let wisps: Wisp[] = [];
+
+    const overlay = await fetchOverlay(setNumber, fetchFn, options?.overlayUrl ?? process.env.TFT_ORACLE_OVERLAY_URL);
+    if (overlay) ({ augments, wisps } = applyOverlay(overlay, champions, augments));
 
     // Clear and re-ingest
     clearAllData(db);
@@ -226,6 +247,7 @@ export async function runPipeline(
     insertTraits(db, traits);
     insertItems(db, items);
     insertAugments(db, augments);
+    insertWisps(db, wisps);
 
     // Store metadata
     setMetadata(db, 'last_updated', new Date().toISOString());
@@ -238,13 +260,14 @@ export async function runPipeline(
       traits: traits.length,
       items: items.length,
       augments: augments.length,
+      wisps: wisps.length,
       setNumber,
       setName: setData.name,
     };
 
     console.error(
       `Pipeline complete: ${result.champions} champions, ${result.traits} traits, ` +
-      `${result.items} items, ${result.augments} augments (Set ${setNumber}: ${setData.name})`
+      `${result.items} items, ${result.augments} augments, ${result.wisps} wisps (Set ${setNumber}: ${setData.name})`
     );
 
     return result;
@@ -262,6 +285,7 @@ export async function runPipeline(
       traits: (db.prepare('SELECT COUNT(*) as cnt FROM traits').get() as { cnt: number }).cnt,
       items: (db.prepare('SELECT COUNT(*) as cnt FROM items').get() as { cnt: number }).cnt,
       augments: (db.prepare('SELECT COUNT(*) as cnt FROM augments').get() as { cnt: number }).cnt,
+      wisps: (db.prepare('SELECT COUNT(*) as cnt FROM wisps').get() as { cnt: number }).cnt,
       setNumber: 'cached',
       setName: 'cached',
     };

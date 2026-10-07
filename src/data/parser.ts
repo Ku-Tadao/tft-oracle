@@ -57,6 +57,8 @@ export function stripMarkup(desc: string): string {
   return desc
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/?[^>]+>/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ ?\n ?/g, '\n')
     .trim();
 }
 

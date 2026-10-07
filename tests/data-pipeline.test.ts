@@ -17,6 +17,7 @@ import {
 } from '../src/data/parser.js';
 import { getDatabase, hasExistingData, getMetadata, setMetadata } from '../src/data/db.js';
 import { runPipeline } from '../src/data/pipeline.js';
+import { fetchOverlay, applyOverlay } from '../src/data/overlay.js';
 import type { TftRawData, RawSetData, RawItem, RawVariable } from '../src/data/types.js';
 import type Database from 'better-sqlite3';
 
@@ -766,5 +767,71 @@ describe('Full pipeline with mock data', () => {
 
     const completed = db.prepare('SELECT name FROM items WHERE isComponent = 0 ORDER BY name').all() as Array<{ name: string }>;
     expect(completed.map(c => c.name)).toEqual(['Giant Slayer', "Thief's Gloves"]);
+  });
+});
+
+describe('Overlay source', () => {
+  const overlayFiles: Record<string, unknown> = {
+    units: { TFT16_TestChampion: { apiKey: 'TFT16_TestChampion', ability: { name: 'Big Swing', description: 'Deal <physicaldamage>%i:scaleAD%100/150/200</physicaldamage> damage.' } } },
+    augments: {
+      tier1: { A: { key: 'TFT16_Augment_WarriorCrown', name: 'Warrior Crown', description: 'Gain a <bright>Warrior</bright> emblem.' } },
+      tier3: { B: { key: 'DA_Prism', name: 'Prism Thing', description: 'Shiny.' } },
+    },
+    // wisps missing on purpose: one failing file must not drop the others
+  };
+
+  function mockFetch(): typeof fetch {
+    const raw = createMockRawData();
+    return (async (url: string) => {
+      const file = /overlay\/set16\/(\w+)$/.exec(url)?.[1];
+      const body = file ? overlayFiles[file] : raw;
+      return {
+        ok: body !== undefined,
+        status: body !== undefined ? 200 : 404,
+        headers: new Headers(),
+        text: async () => JSON.stringify(body),
+        json: async () => body,
+      };
+    }) as unknown as typeof fetch;
+  }
+
+  it('overrides ability text, replaces augments with tiered list, tolerates a missing file', async () => {
+    const db = getDatabase(':memory:');
+    const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tft-oracle-test-'));
+    try {
+      const result = await runPipeline(db, {
+        force: true, fetchFn: mockFetch(), cacheDir, overlayUrl: 'https://x.test/overlay/set{set}/',
+      });
+      expect(result.wisps).toBe(0);
+
+      const champ = db.prepare("SELECT abilityName, abilityDesc FROM champions WHERE apiName = 'TFT16_TestChampion'").get() as { abilityName: string; abilityDesc: string };
+      expect(champ).toEqual({ abilityName: 'Big Swing', abilityDesc: 'Deal [AD]100/150/200 damage.' });
+
+      const augs = db.prepare('SELECT name, tier, description FROM augments ORDER BY tier').all();
+      expect(augs).toEqual([
+        { name: 'Warrior Crown', tier: 1, description: 'Gain a Warrior emblem.' },
+        { name: 'Prism Thing', tier: 3, description: 'Shiny.' },
+      ]);
+    } finally {
+      db.close();
+      fs.rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  it('is skipped without a URL', async () => {
+    expect(await fetchOverlay('16', mockFetch(), '')).toBeNull();
+  });
+});
+
+describe('Wisp parsing', () => {
+  it('reads category from tags and the upgraded text', () => {
+    const { wisps } = applyOverlay({
+      wisps: [{
+        apiKey: 'W1', name: 'Abandon Ship', cost: 0, description: 'Gain <bright>6</bright> gold.',
+        tags: ['Charm.Category.Risky', 'Charm.Tier.3'],
+        upgrades: [{ description: 'Gain <set18charmupgrade>9</set18charmupgrade> gold.' }],
+      }],
+    }, [], []);
+    expect(wisps).toEqual([{ name: 'Abandon Ship', apiName: 'W1', cost: 0, category: 'Risky', description: 'Gain 6 gold.', upgraded: 'Gain 9 gold.' }]);
   });
 });

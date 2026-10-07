@@ -53,7 +53,18 @@ CREATE TABLE IF NOT EXISTS augments (
   name TEXT NOT NULL,
   apiName TEXT PRIMARY KEY,
   description TEXT,
-  effects TEXT                   -- JSON object
+  effects TEXT,                  -- JSON object
+  tier INTEGER                   -- 1 Silver, 2 Gold, 3 Prismatic (overlay only)
+);
+
+-- Set mechanic choices (Set 18 wisps; overlay only, empty otherwise)
+CREATE TABLE IF NOT EXISTS wisps (
+  name TEXT NOT NULL,
+  apiName TEXT PRIMARY KEY,
+  cost INTEGER,
+  category TEXT,
+  description TEXT,
+  upgraded TEXT
 );
 
 -- Metadata (key-value store)
